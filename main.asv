@@ -130,17 +130,14 @@ end
 function gbest = get_global_best(pbest, previous_best, data_matrix)
     pop_size = length(pbest); % wezmy rozmiar populacji
     gbest = ones(1, pop_size); % tu bedziemy wektor najlepszego rozwiazania przechowywac
-    current_best = Inf; % ustawmy wstepnie ze nieskonczonosc to najlepszy blad
+    current_best = Inf; % ustawmy wstepnie ze nieskonczonosc to najle
     for i = 1 : pop_size
-        % jesli ktorys z lokalnych rozwiazan jest lepszy to zmieniamy
-        % indeks i current)best
         if get_func_val(pbest(i, :), data_matrix) < current_best
             gbest = pbest(i, :);
             current_best = get_func_val(pbest(i, :), data_matrix);
         end
     end
     
-    % czy nowe potencjalne rozwiazanie globalne jest lepsze od starego?
     if current_best > get_func_val(previous_best, data_matrix)
         gbest = previous_best;
     end
