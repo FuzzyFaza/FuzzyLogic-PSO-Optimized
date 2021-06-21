@@ -1,5 +1,4 @@
-clear;clc;
-
+clear;clc;warning('off');
 iris_names = ["Setosa", "Versicolor", "Viriginica"];
 
 % Nazwy w zbiorze iris zostaly zastepione przez liczbowe etykiety (1, 2, 3)
@@ -11,8 +10,8 @@ wineSize = size(wine_data);
 wine_data = circshift(wine_data, wineSize(2)-1, 2);
 seeders_data = load('Data/seeds_dataset.txt');
 
-% Ustawienie liczby funkcji przynależności
- numberOfMembershipFunctions = 5;
+% Zaszła zmiana, liczba funkcji przynależności powinna być równa liczbie
+% klas wyjściowych, a nie ustawiana przez użytkownika
 % Ustawienie rozmiaru populacji
 populationSize = 15;
 % Ilość części na jakie dzielimy zbiór
@@ -26,7 +25,7 @@ numberOfFolds = 10;
 data_store = iris_data;
 [data_matrix, results, dataSet, numberOfAttributes, maxValueFromDataset, minValueFromDataset, numberOfOutputs] = prepare_folds(data_store, numberOfFolds);
 % Wyznaczenie długości wyktora parametrów
-numberOfParameters = numberOfAttributes*numberOfOutputs*numberOfMembershipFunctions;
+numberOfParameters = numberOfAttributes*numberOfOutputs*numberOfOutputs;
 % Zainicjowanie populacji zerami
 pop = zeros(numberOfParameters, populationSize);
 % Przypisanie wylosowanych liczb do populacji
@@ -35,40 +34,21 @@ for i=1:numberOfParameters
       pop(i, j) = randInRange(minValueFromDataset, maxValueFromDataset); 
    end
 end
-customFis = mamfis('Name', 'test', 'NumInputs', numberOfAttributes, 'NumOutputs', 1, 'NumInputMFs', numberOfMembershipFunctions, 'NumOutputMFs', numberOfOutputs);
-cross_validation(data_matrix, customFis, results);
-%perfect = prepareFisWithPSO(pop, data_matrix, dataSet, customFis);
-%firstOut = evalfis(customFis,...);
+customFis = mamfis('Name', 'test', 'NumInputs', numberOfAttributes, 'NumOutputs', 1, 'NumInputMFs', numberOfOutputs, 'NumOutputMFs', numberOfOutputs);
+customFis = prepareFisRules(dataSet, customFis);
+perfectParams = prepareFisWithPSO(pop, data_matrix, dataSet, results, customFis);
+%customFis = parseFis(perfectParams, dataSet, customFis);
+%firstOut = evalfis(customFis, );
+%get_func_val(perfectParams, data_matrix, dataSet, results, customFis)
+%plotfis(customFis)
 %perfectFis = genfis();
 %secOut = evalfis(perfectFis, ...);
-
-
-% customFis = mamfis('Name', 'test', 'NumInputs', numberOfAttributes, 'NumOutputs', 1, 'NumInputMFs', numberOfMembershipFunctions, 'NumOutputMFs', numberOfOutputs);
-% [in,out] = getTunableSettings(customFis);
-% for i=1:length(in)
-%     for j=1:numberOfMembershipFunctions 
-%        in(i).MembershipFunctions(j).Parameters.Minimum = minValueFromDataset - 0.1 * (maxValueFromDataset-minValueFromDataset);
-%        in(i).MembershipFunctions(j).Parameters.Maximum = maxValueFromDataset + 0.1 * (maxValueFromDataset-minValueFromDataset);
-%     end
-% end
-% test = pop(:, 1);
-% numOfParams = length(customFis.Input(1).MembershipFunctions(1).Parameters);
-% singlePop = zeros(numberOfParameters/numOfParams, numOfParams);
-% counter = 1;
-% for i=1:numberOfParameters/numOfParams
-%     for j=1:numOfParams
-%         singlePop(i, j) = test(counter, 1);
-%         counter = counter + 1;
-%     end
-% end
-% singlePop = sort(singlePop, 2);
-% counter = 1;
-% for i=1:length(in)
-%     for j=1:numberOfMembershipFunctions 
-%        customFis.Input(i).MembershipFunctions(j).Parameters = singlePop(counter, :);
-%        counter = counter + 1;
-%     end
-% end
+[in,out] = getTunableSettings(customFis);
+for i=1:length(in)
+    for j=1:length(customFis.Inputs(i).MembershipFunction)
+        customFis.Inputs(i).MembershipFunction(j).Parameters
+    end
+end
 
 
 % Funkcja do losowania liczby z przekazanego zakresu
@@ -81,12 +61,12 @@ end
 % Funkcja znajdujaca przy pomocy algorytmu rojowego strukture fisu.
 % data_matrix - dane przygotowane do cross-10-validation
 % dataSet - atrybuty irysów
-function fis = prepareFisWithPSO(pop, data_matrix, dataSet, basicFis)
+function fis = prepareFisWithPSO(pop, data_matrix, dataSet, results, basicFis)
     EXPERIMENT_ATTEMPTS = 10; % z tylu prob wyciagac bedziemy srednia dla danego elementu,
     % moze pozniej dodamy na razie sprobujmy doprowadzic zeby cokolwiek sie
     % liczylo
     
-    [vector_size, pop_size] = size(pop) % vector_size to rozmiar pojedyńczego wektora populacji
+    [vector_size, pop_size] = size(pop); % vector_size to rozmiar pojedyńczego wektora populacji
     % pop_size to rozmiar całej populacji
     c1 = 2; % stala akceleracji
     c2 = 2; % stala akceleracji
@@ -106,13 +86,9 @@ function fis = prepareFisWithPSO(pop, data_matrix, dataSet, basicFis)
 
     pbest = ones(1, vector_size); % lokalnie najlepsze czasteczki
     gbest = ones(1, vector_size); % globalnie najlepsza czasteczka
-%     for i = 1 : vector_size
-%         gbest(1, i) = Inf; % ustawmy pola na nieskonczonosc na poczatku, w sumie nie jestem pewien
-%         % czy akurat w tym przypadku bedzie dzialac, ale pomysle
-%     end
 
-     w = calc_constriction_factor(c1, c2);
-
+    w = calc_constriction_factor(c1, c2);
+    
     while it <= it_max
         it = it + 1;
         % wyznaczamy przystosowanie kazdej czastki - wartosc funkcji w punkcie
@@ -120,7 +96,7 @@ function fis = prepareFisWithPSO(pop, data_matrix, dataSet, basicFis)
         for i = 1 : pop_size
                 % jak i-ta czasteczka jest lepsza w itej iteracji to
                 % zamieniamy
-                if i == 1 || get_func_val(pop(:, i), data_matrix, dataSet, basicFis) < get_func_val(pbest, data_matrix, dataSet, basicFis)
+                if i == 1 || get_func_val(pop(:, i), data_matrix, dataSet, results, basicFis) > get_func_val(pbest, data_matrix, dataSet, results, basicFis)
                     pbest = pop(:, i);
                 end
         end
@@ -128,20 +104,19 @@ function fis = prepareFisWithPSO(pop, data_matrix, dataSet, basicFis)
         %szukamy rozwiazania globalnie najlepszego
         if it == 1
             gbest = pbest;
-        elseif get_func_val(pbest, data_matrix, dataSet, basicFis) < get_func_val(gbest, data_matrix, dataSet, basicFis)
+        elseif get_func_val(pbest, data_matrix, dataSet, results, basicFis) > get_func_val(gbest, data_matrix, dataSet, results, basicFis)
             gbest = pbest;
         end
         %gbest = get_global_best(pbest, gbest, data_matrix);
-        pbest
-%         % uaktualniamy predkosc i polozenie dla kazdej czastki
-%         for i = 1 : pop_size
-%                 U1 = c1 * rand(1);
-%                 U2 = c2 * rand(1);
-%                 v(:, i) = w * (v(:, i) + U1 * (pbest - pop(:, i)) + U2 * (gbest - pop(:, i)));
-%                 pop(:, i) = pop(:, i) + v(:, i);            
-%         end
-%         pbest
-%         fis = get_func_val(gbest, data_matrix, basicFis);
+        % uaktualniamy predkosc i polozenie dla kazdej czastki
+        for i = 1 : pop_size
+                U1 = c1 * rand();
+                U2 = c2 * rand();
+                v(:, i) = w * (v(:, i) + U1 * (pbest - pop(:, i)) + U2 * (gbest - pop(:, i)));
+                pop(:, i) = pop(:, i) + v(:, i);            
+        end
+        
+        fis = gbest;
         % experiment_result_values_sum = experiment_result_values_sum + estimated_best_value;
         % experiment_vectors_sum = experiment_vectors_sum + gbest;
     end
@@ -156,51 +131,16 @@ function factor = calc_constriction_factor(c1, c2)
     % jak dokladnie sie liczy ten wspolczynnik z reguly
 end
 
-function gbest = get_global_best(pbest, previous_best, data_matrix)
-    pop_size = size(pbest); % wezmy rozmiar populacji
-    gbest = ones(1, pop_size(2)); % tu bedziemy wektor najlepszego rozwiazania przechowywac
-    current_best = Inf; % ustawmy wstepnie ze nieskonczonosc to najlepszy blad
-    for i = 1 : pop_size(2)
-        % jesli ktorys z lokalnych rozwiazan jest lepszy to zmieniamy
-        % indeks i current_best
-        if get_func_val(pbest(i, :), data_matrix) < current_best
-            gbest = pbest(i, :);
-            current_best = get_func_val(pbest(i, :), data_matrix);
-        end
-    end
-    
-    % czy nowe potencjalne rozwiazanie globalne jest lepsze od starego?
-    if current_best > get_func_val(previous_best, data_matrix)
-        gbest = previous_best;
-    end
-end
-
 % wybieramy najlepszy pod katem najmniejszego calkowitego bledu
 % bezwzglednego
-function value = get_func_val(vect, data_matrix, dataSet, basicFis)
-    fis = parseFis(vect, dataSet, basicFis); % czy parseFis uczy na zbiorze uczacym czy ustawia
-    % parametry a ja mam uczyc?
-    % 20% np. na zbior testowy
-    %testing = data_matrix(0.8 * length(data_matrix) + 1:length(data_matrix), :);
-    %testing_vector_length = length(testing(1,:));
-    %testing_input = testing(:, 1:testing_vector_length);
-    %testing_output = testing(:, testing_vector_length);
-    %out = cross_validation();
-    value = cross_validation(data_matrix, fis);
-    %y = evalfis(fis, testing_input);% wynik uczenia przetestowany na zbiorze testowym
-    %value = mse(y, testing_output); % jakos trzeba wyznaczyc jakos fisu dla danych parametrow poprzez jakis blad
+function value = get_func_val(vect, data_matrix, dataSet, results, basicFis)
+    fis = parseFis(vect, dataSet, basicFis);
+    value = cross_validation(data_matrix, fis, results);
 end
 
 function customFis = parseFis(vect, data_matrix, customFis)
     [in,out] = getTunableSettings(customFis);
     numberOfMembershipFunctions = length(in(1).MembershipFunctions);
-    maxValueFromDataset = max(max(data_matrix));
-    minValueFromDataset = min(min(data_matrix));
-    minValue = minValueFromDataset - 0.1 * (maxValueFromDataset-minValueFromDataset);
-    maxValue = maxValueFromDataset + 0.1 * (maxValueFromDataset-minValueFromDataset);
-    for i=1:length(in)
-            customFis.Inputs(i).Range = [minValue maxValue];
-    end
     tmpSize = size(data_matrix);
     numberOfParameters = numberOfMembershipFunctions * tmpSize(2) * length(out(1).MembershipFunctions);
     numOfParams = length(customFis.Input(1).MembershipFunctions(1).Parameters);
@@ -221,6 +161,50 @@ function customFis = parseFis(vect, data_matrix, customFis)
         end
     end
     %showrule(customFis, 'Format', 'indexed')
+end
+
+function customFis = prepareFisRules(data_matrix, customFis)
+    [in,out] = getTunableSettings(customFis);
+    numberOfMembershipFunctions = length(in(1).MembershipFunctions);
+    %Przygotowanie zakresu dla każdej funkcji przynależności
+    maxValueFromDataset = max(max(data_matrix));
+    minValueFromDataset = min(min(data_matrix));
+    minValue = minValueFromDataset - 0.1 * (maxValueFromDataset-minValueFromDataset);
+    maxValue = maxValueFromDataset + 0.1 * (maxValueFromDataset-minValueFromDataset);
+    for i=1:length(in)
+        customFis.Inputs(i).Range = [minValue maxValue];
+    end
+    for i=1:length(out)
+        customFis.Outputs(i).Range = [minValue maxValue];
+    end
+    % Jest jedno wyjście i trzy klasy więc można to zrobić ręcznie
+    customFis.Outputs(1).MembershipFunctions(1).Parameters = [minValue (minValue+1/3*(maxValue-minValue) + minValue)/2 minValue+1/3*(maxValue-minValue)];
+    customFis.Outputs(1).MembershipFunctions(2).Parameters = [minValue+1/3*(maxValue-minValue) (maxValue-1/3*(maxValue-minValue) + minValue+1/3*(maxValue-minValue))/2 maxValue-1/3*(maxValue-minValue)];
+    customFis.Outputs(1).MembershipFunctions(3).Parameters = [maxValue-1/3*(maxValue-minValue) (maxValue-1/3*(maxValue-minValue) + maxValue) / 2 maxValue];
+    % Przygotowanie reguł
+    numberOfRules = numberOfMembershipFunctions ^ length(in);
+    tmp = zeros(length(out(1).MembershipFunctions));
+    tmpHolder = 0;
+    for i=1:numberOfRules
+        for j=1:length(customFis.Rule(i).Antecedent)
+            if customFis.Rule(i).Antecedent(j) == 1
+                tmp(1) = tmp(1) + 1;
+            elseif customFis.Rule(i).Antecedent(j) == 2
+                tmp(2) = tmp(2) + 1;
+            else
+                tmp(3) = tmp(3) + 1;
+            end
+            if tmp(1) > tmp(2) && tmp(1) > tmp(3)
+                tmpHolder = 1;
+            elseif tmp(2) > tmp(1) && tmp(2) > tmp(3)
+                tmpHolder = 2;
+            else
+                tmpHolder = 3;
+            end
+        end
+        customFis.Rule(i).Consequent = tmpHolder;
+        tmp = zeros(length(out(1).MembershipFunctions));
+    end
 end
 
 function [data_matrix, results, dataSet, numberOfAttributes, maxValueFromDataset, minValueFromDataset, numberOfOutputs] = prepare_folds(data, numOfFolds)
@@ -266,17 +250,26 @@ function value = cross_validation(data_matrix, customFis, results)
        test_size = size(testData);
        testData = reshape(testData, test_size(2), test_size(3));
        % testowanie przygotowanego zbioru
-       %out = evalfis(customFis, testData);
-       %badanie dokładności i zapisanie w tablicy do policzenia wartości
-       %średniej
+       out = evalfis(customFis, testData);
+       %badanie dokładności i zapisanie w tablicy do policzenia wartości średniej
+       % badanie odbywa się przez porównanie wartości wyjściowej z
+       % wartością oczekiwaną (nie rozróżniam na tym etapie klas)
        correct = 0;
        for j=1:data_size(2)
-            if out(i, j) == results(i, j)
+            if out(j) < 3 && results(i, j) == 1
+                correct = correct + 1;
+            elseif out(j) >= 3 && out(j) < 6 && results(i, j) == 2
+                correct = correct + 1;
+            elseif out(j) >= 6 && results(i, j) == 3
                 correct = correct + 1;
             end
        end
        average = correct / data_size(2);
-       %averages(i) = value;
+       averages(i) = average;
     end
-    value = sum(averages) / length(averages);
+    tmpSum = 0;
+    for i=1:length(averages)
+        tmpSum = tmpSum + averages(i);
+    end
+    value = tmpSum / length(averages);
 end
