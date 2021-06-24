@@ -3,12 +3,25 @@ iris_names = ["Setosa", "Versicolor", "Viriginica"];
 
 % Nazwy w zbiorze iris zostaly zastepione przez liczbowe etykiety (1, 2, 3)
 % aby latwiej bylo wczytac zbior danych
-iris_data = load('Data/iris.data');
-wine_data = load('Data/wine.data');
-% Przesunięcie numerów klas w zbiorze win na ostatnią pozycję
-wineSize = size(wine_data);
-wine_data = circshift(wine_data, wineSize(2)-1, 2);
-seeders_data = load('Data/seeds_dataset.txt');
+
+choice = input("Proszę wybrać zbiór danych, na którym będziemy operować:\n 1. Irysy 2. Wina 3. Zbiór ziaren - seeds\n");
+ 
+data_store = [];
+
+switch choice
+    case 1
+        data_store = load('Data/iris.data');
+    case 2
+        % Przesunięcie numerów klas w zbiorze win na ostatnią pozycję
+        wine_data = load('Data/wine.data');
+        wineSize = size(wine_data);
+        wine_data = circshift(wine_data, wineSize(2)-1, 2);
+        data_store = wine_data;
+    case 3
+        data_store = load('Data/seeds_dataset.txt');
+    otherwise
+        printf("Nie wybrano poprawnie zbioru, wiec domyslnie zostanie wybrany zbior irysow. \n")
+end
 
 % Zaszła zmiana, liczba funkcji przynależności powinna być równa liczbie
 % klas wyjściowych, a nie ustawiana przez użytkownika
@@ -17,12 +30,6 @@ populationSize = 15;
 % Ilość części na jakie dzielimy zbiór
 numberOfFolds = 10;
 
-% Wyobrażam sobie ten skrypt jako mini aplikacje konsolową. Użytkownik po
-% wprowadzeniu odpowiedniej cyfry spowoduje wczytanie pożądanych danych
-% (oszczędność pamięci).
-% W celu uogólnienia mamy zmienną data_store do przechowywania pożądanego
-% zbioru danych
-data_store = iris_data;
 [data_matrix, results, dataSet, numberOfAttributes, maxValueFromDataset, minValueFromDataset, numberOfOutputs] = prepare_folds(data_store, numberOfFolds);
 % Wyznaczenie długości wyktora parametrów
 numberOfParameters = numberOfAttributes*numberOfOutputs*numberOfOutputs;
@@ -39,11 +46,20 @@ customFis = prepareFisRules(dataSet, customFis);
 perfectParams = prepareFisWithPSO(pop, data_matrix, dataSet, results, customFis);
 customFis = parseFis(perfectParams, dataSet, customFis);
 %firstOut = evalfis(customFis, );
-get_func_val(perfectParams, data_matrix, dataSet, results, customFis)
+get_func_val(perfectParams, data_matrix, dataSet, results, customFis);
 %plotfis(customFis)
-%perfectFis = genfis();
+%some = squeeze(data_matrix(1, :, :));
+perfectFis = genfis(squeeze(data_matrix(1, :, :)), results(1, :)');
 %secOut = evalfis(perfectFis, ...);
 
+% genfis przy CV-10
+for i = 2 : 9
+   perfectFis = genfis(squeeze(data_matrix(i, :, :)), results(i, :)');
+end
+
+outputs = evalfis(perfectFis, squeeze(data_matrix(10, :, :)));
+
+acc_matrix = get_acc_matrix(outputs, squeeze(data_matrix(1, :, :)), numberOfOutputs);
 
 % Funkcja do losowania liczby z przekazanego zakresu
 % Losowany zakres to [begin - 10% * range, end + 10%*range]
@@ -66,7 +82,7 @@ function fis = prepareFisWithPSO(pop, data_matrix, dataSet, results, basicFis)
     c2 = 2; % stala akceleracji
 
     it = 0; % licznik iteracji
-    it_max = 20; % maksymalny nr iteracji
+    it_max = 1; % maksymalny nr iteracji
 
     % wektor predkosci
     v = zeros(vector_size, pop_size); % wektor o dlugosci wiersza danych (60 dla irysow)
@@ -111,6 +127,7 @@ function fis = prepareFisWithPSO(pop, data_matrix, dataSet, results, basicFis)
         end
         
         fis = gbest;
+        
         % experiment_result_values_sum = experiment_result_values_sum + estimated_best_value;
         % experiment_vectors_sum = experiment_vectors_sum + gbest;
     end
@@ -267,4 +284,22 @@ function value = cross_validation(data_matrix, customFis, results)
         tmpSum = tmpSum + averages(i);
     end
     value = tmpSum / length(averages);
+end
+
+function acc_matrix = get_acc_matrix(outputs, perfect_outputs, NUM_OF_CLASSES)
+    acc_matrix = zeros(NUM_OF_CLASSES);
+    counters = zeros(1, NUM_OF_CLASSES);
+    
+    for i = 1 : length(outputs)
+        if outputs(i) == perfect_outputs(i)
+            acc_matrix(perfect_outputs(i), outputs(i)) = acc_matrix(outputs(i)) + 1;
+            counters(i) = counters(i) + 1;
+        end
+    end
+    
+    for i = 1 : NUM_OF_CLASSES
+        for j = 1 : NUM_OF_CLASSES
+            acc_matrix(i, j) = 1.0 * acc_matrix(i, j) / counters(i); 
+        end
+    end
 end
