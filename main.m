@@ -66,7 +66,7 @@ function fis = prepareFisWithPSO(pop, data_matrix, dataSet, results, basicFis)
     c2 = 2; % stala akceleracji
 
     it = 0; % licznik iteracji
-    it_max = 20; % maksymalny nr iteracji
+    it_max = 5; % maksymalny nr iteracji
 
     % wektor predkosci
     v = zeros(vector_size, pop_size); % wektor o dlugosci wiersza danych (60 dla irysow)
