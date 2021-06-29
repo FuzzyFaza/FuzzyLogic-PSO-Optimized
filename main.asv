@@ -33,9 +33,7 @@ populationSize = 15;
 numberOfFolds = 10;
 
 [data_matrix, results, dataSet, numberOfAttributes, maxValueFromDataset, minValueFromDataset, numberOfClasses] = prepare_folds(data_store, numberOfFolds);
-% Wyznaczenie długości wyktora parametrów
 customFis = mamfis('Name', 'test', 'NumInputs', numberOfAttributes, 'NumOutputs', 1, 'NumInputMFs', numberOfClasses, 'NumOutputMFs', numberOfClasses);
-%customFis = mamfis('Name', 'test', 'NumInputs', numberOfAttributes, 'NumOutputs', 1, 'NumInputMFs', numberOfOutputs, 'NumOutputMFs', numberOfOutputs, 'AddRules', "none");
 customFis = prepareFisRules(dataSet, customFis);
 pop = generatePopulation(customFis, numberOfAttributes, numberOfClasses, populationSize, minValueFromDataset, maxValueFromDataset);
 [perfectParams, bestDuringIterations] = prepareFisWithPSO(pop, data_matrix, dataSet, results, customFis);
@@ -58,14 +56,23 @@ function number = randInRange(beginRange, endRange)
     number = (range + range * 0.2) * rand() + (beginRange - range * 0.1);
 end
 
+%Funkcja do rysowania wykresu wartości globalnie najlepszego rozwiązania od
+%numeru iteracji
 function drawTrainingProcess(bests)
     bestSize = size(bests);
-    length
-    plot([1 bestSize(2)], bests);
+    plot([1:bestSize(2)], bests);
 end
 
+%Funkcja tworząca populacje
+%customFis - dostrajany przez PSO układ logiki rozmytej
+%numberOfAttributes - ilość cech w zbiorze danych
+%numberOfClasses - ilość różnych wyjść
+%populationSize - rozmiar populacji
+%minValueFromDataset - wartość minimalna w zbiorze danych
+%maxValueFromDataset - wartość maksymalna w zbiorze danych
 function pop = generatePopulation(customFis, numberOfAttributes, numberOfClasses, populationSize, minValueFromDataset, maxValueFromDataset)
     [in, out] = getTunableSettings(customFis);
+    % Wyznaczenie ilości osobników w populacji
     numberOfParameters = numberOfAttributes*numberOfClasses*length(in(1).MembershipFunctions(1).Parameters.Free);
     % Zainicjowanie populacji zerami
     pop = zeros(numberOfParameters, populationSize);
@@ -80,11 +87,7 @@ end
 % Funkcja znajdujaca przy pomocy algorytmu rojowego strukture fisu.
 % data_matrix - dane przygotowane do cross-10-validation
 % dataSet - atrybuty irysów
-function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results, basicFis)
-    EXPERIMENT_ATTEMPTS = 10; % z tylu prob wyciagac bedziemy srednia dla danego elementu,
-    % moze pozniej dodamy na razie sprobujmy doprowadzic zeby cokolwiek sie
-    % liczylo
-    
+function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results, basicFis)    
     [vector_size, pop_size] = size(pop); % vector_size to rozmiar pojedyńczego wektora populacji
     % pop_size to rozmiar całej populacji
     c1 = 2; % stala akceleracji
@@ -113,20 +116,24 @@ function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results
         % wyznaczamy przystosowanie kazdej czastki - wartosc funkcji w punkcie
         % i czy jest ona mniejsza od poprzedniej najlepszej dla danej czastki
         for i = 1 : pop_size
-                % jak i-ta czasteczka jest lepsza w itej iteracji to
+                % jak czasteczka w i-tej iteracji jest lepsza to
                 % zamieniamy
                 if i == 1 || get_func_val(pop(:, i), data_matrix, dataSet, results, basicFis) > get_func_val(pbest, data_matrix, dataSet, results, basicFis)
                     pbest = pop(:, i);
                 end
         end
-
+        
         %szukamy rozwiazania globalnie najlepszego
         if it == 1
             gbest = pbest;
         elseif get_func_val(pbest, data_matrix, dataSet, results, basicFis) > get_func_val(gbest, data_matrix, dataSet, results, basicFis)
             gbest = pbest;
         end
-        %gbest = get_global_best(pbest, gbest, data_matrix);
+        
+        %Przypisanie globalnie najlepszego rozwiązania w i-tej iteracji do
+        %wektora (wykorzystane przy rysowaniu wykresu)
+        gbestList(1, it) = get_func_val(gbest, data_matrix, dataSet, results, basicFis);
+        
         % uaktualniamy predkosc i polozenie dla kazdej czastki
         for i = 1 : pop_size
                 U1 = c1 * rand();
@@ -134,15 +141,15 @@ function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results
                 v(:, i) = w * (v(:, i) + U1 * (pbest - pop(:, i)) + U2 * (gbest - pop(:, i)));
                 pop(:, i) = pop(:, i) + v(:, i);            
         end
+        %Funkcja zwraca najlepszego osobnika z populacji
         fis = gbest;
-        gbestList(1, it) = get_func_val(gbest, data_matrix, dataSet, results, basicFis);
     end
 end
 
+%Wyznaczanie współczynniku ścisku
 function factor = calc_constriction_factor(c1, c2)
     fi = c1 + c2;
-    factor = 2. / (2 + (fi * (fi - 4)) ^ 0.5); % tutaj jeszcze sprawdze w labach
-    % jak dokladnie sie liczy ten wspolczynnik z reguly
+    factor = 2. / (2 + (fi * (fi - 4)) ^ 0.5);
 end
 
 % wybieramy najlepszy pod katem najmniejszego calkowitego bledu
@@ -152,6 +159,7 @@ function value = get_func_val(vect, data_matrix, dataSet, results, basicFis)
     value = cross_validation(data_matrix, fis, results);
 end
 
+%Ustawianie parametrów układu logiki rozmytej
 function customFis = parseFis(vect, data_matrix, customFis)
     [in,out] = getTunableSettings(customFis);
     numberOfMembershipFunctions = length(in(1).MembershipFunctions);
@@ -177,6 +185,8 @@ function customFis = parseFis(vect, data_matrix, customFis)
     %showrule(customFis, 'Format', 'indexed')
 end
 
+%Przygotowanie reguł układu logiki rozmytej
+%Funkcja działa prawidłowo dla układów które zwracają co najwyżej 3 klasy 
 function customFis = prepareFisRules(data_matrix, customFis)
     [in,out] = getTunableSettings(customFis);
     numberOfMembershipFunctions = length(in(1).MembershipFunctions);
@@ -221,6 +231,9 @@ function customFis = prepareFisRules(data_matrix, customFis)
     end
 end
 
+% Funkcja dzieląca zbiór danych na odpowiednią liczbę podzbiorów
+% data - dane wejściowe
+% numberOfFolds - ilość części na które dzielony jest zbiór
 function [data_matrix, results, dataSet, numberOfAttributes, maxValueFromDataset, minValueFromDataset, numberOfOutputs] = prepare_folds(data, numOfFolds)
     % Pobranie rozmiaru "bazy danych"
     data_size = size(data);
@@ -256,6 +269,10 @@ function [data_matrix, results, dataSet, numberOfAttributes, maxValueFromDataset
     numberOfOutputs = length(outputs);
 end
 
+% Walidacja krzyżowa dla układu logiki rozmytej tworzonej ręcznie
+% data_matrix - dane podzielone na części
+% customFis - ręcznie utworzony układ logiki rozmytej
+% results - prawidłowe wyniki
 function value = cross_validation(data_matrix, customFis, results)
     data_size = size(data_matrix);
     averages = zeros(data_size(1));
@@ -289,6 +306,12 @@ function value = cross_validation(data_matrix, customFis, results)
     value = tmpSum / length(averages);
 end
 
+% Funkcja tworząca genfis do porównania z układem logiki rozmytej
+% utworzonym ręcznie
+% Utworzony genfis ma zaledwie 16 reguł, więc praktycznie zawsze będzie
+% gorszy od fis'u utworzonego ręcznie
+% data_matrix - dane podzielone na części
+% results - prawidłowe wyniki
 function value = genfisTest(data_matrix, results)
     flag = 0;
     data_size = size(results);
@@ -330,6 +353,10 @@ function value = genfisTest(data_matrix, results)
     value = tmpSum / length(averages);
 end
 
+% Funkcja tworząca macierz pomyłek i wyznaczająca czułość klasyfikatora
+% customFis - ręcznie dostrajany układ logiki rozmytej
+% data_matrix - macierz z danymi podzielona na części
+% result - macierz z w
 function [acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, result, NUM_OF_CLASSES)
     acc_matrix = zeros(NUM_OF_CLASSES, NUM_OF_CLASSES);
     data_size = size(data_matrix);
