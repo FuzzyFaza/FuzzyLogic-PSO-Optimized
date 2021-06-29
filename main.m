@@ -4,7 +4,7 @@ iris_names = ["Setosa", "Versicolor", "Viriginica"];
 % Nazwy w zbiorze iris zostaly zastepione przez liczbowe etykiety (1, 2, 3)
 % aby latwiej bylo wczytac zbior danych
 
-choice = input("Proszę wybrać zbiór danych, na którym będziemy operować:\n 1. Irysy 2. Wina 3. Zbiór ziaren - seeds\n");
+choice = input("Proszę wybrać zbiór danych, na którym będziemy operować:\n 1. Irysy 2. Wina 3. Zbiór ziaren - seeds 4. Haberman 5. Teaching Assistants\n");
  
 data_store = [];
 
@@ -19,6 +19,10 @@ switch choice
         data_store = wine_data;
     case 3
         data_store = load('Data/seeds_dataset.txt');
+    case 4
+        data_store = load('Data/haberman.data');
+    case 5
+        data_store = load('Data/tae.data');
     otherwise
         printf("Nie wybrano poprawnie zbioru, wiec domyslnie zostanie wybrany zbior irysow. \n")
 end
@@ -26,13 +30,17 @@ end
 % Zaszła zmiana, liczba funkcji przynależności powinna być równa liczbie
 % klas wyjściowych, a nie ustawiana przez użytkownika
 % Ustawienie rozmiaru populacji
-populationSize = 15;
+populationSize = 10;
 % Ilość części na jakie dzielimy zbiór
 numberOfFolds = 10;
 
-[data_matrix, results, dataSet, numberOfAttributes, maxValueFromDataset, minValueFromDataset, numberOfOutputs] = prepare_folds(data_store, numberOfFolds);
+[data_matrix, results, dataSet, numberOfAttributes, maxValueFromDataset, minValueFromDataset, numberOfClasses] = prepare_folds(data_store, numberOfFolds);
 % Wyznaczenie długości wyktora parametrów
-numberOfParameters = numberOfAttributes*numberOfOutputs*numberOfOutputs;
+customFis = mamfis('Name', 'test', 'NumInputs', numberOfAttributes, 'NumOutputs', 1, 'NumInputMFs', numberOfClasses, 'NumOutputMFs', numberOfClasses);
+[in, out] = getTunableSettings(customFis);
+%customFis = mamfis('Name', 'test', 'NumInputs', numberOfAttributes, 'NumOutputs', 1, 'NumInputMFs', numberOfOutputs, 'NumOutputMFs', numberOfOutputs, 'AddRules', "none");
+customFis = firstAttemptPrepareFisRules(dataSet, customFis);
+numberOfParameters = numberOfAttributes*numberOfClasses*length(in(1).MembershipFunctions(1).Parameters.Free); % 3 to ilość parametrów funkcji przynależności
 % Zainicjowanie populacji zerami
 pop = zeros(numberOfParameters, populationSize);
 % Przypisanie wylosowanych liczb do populacji
@@ -41,25 +49,53 @@ for i=1:numberOfParameters
       pop(i, j) = randInRange(minValueFromDataset, maxValueFromDataset); 
    end
 end
-customFis = mamfis('Name', 'test', 'NumInputs', numberOfAttributes, 'NumOutputs', 1, 'NumInputMFs', numberOfOutputs, 'NumOutputMFs', numberOfOutputs);
-customFis = prepareFisRules(dataSet, customFis);
 perfectParams = prepareFisWithPSO(pop, data_matrix, dataSet, results, customFis);
 customFis = parseFis(perfectParams, dataSet, customFis);
-%firstOut = evalfis(customFis, );
-get_func_val(perfectParams, data_matrix, dataSet, results, customFis);
+%firstOut = evalfis(customFis, data_matrix);
+customFisResult = get_func_val(perfectParams, data_matrix, dataSet, results, customFis);
 %plotfis(customFis)
-%some = squeeze(data_matrix(1, :, :));
-perfectFis = genfis(squeeze(data_matrix(1, :, :)), results(1, :)');
+%perfectFis = genfis(squeeze(data_matrix(1, :, :)), results(1, :)');
 %secOut = evalfis(perfectFis, ...);
+flag = 0;
+data_size = size(results);
+averages = zeros(data_size(1));
 
 % genfis przy CV-10
-for i = 2 : 9
-   perfectFis = genfis(squeeze(data_matrix(i, :, :)), results(i, :)');
+for i=1:10
+    for j=1:10
+        if j ~= i
+            if flag == 0
+                perfectFis = genfis(squeeze(data_matrix(j, :, :)), results(j, :)');
+                flag = 1;
+            else
+                perfectFis = tunefis(perfectFis, [in;out], squeeze(data_matrix(j, :, :)), results(j, :)', tunefisOptions("Method", "anfis"));
+            end
+            [in, out] = getTunableSettings(perfectFis);
+        end
+    end
+    fisResults = evalfis(perfectFis, squeeze(data_matrix(i, :, :)));
+    correct = 0;
+    for j=1:data_size(2)
+         if fisResults(j) < maxValueFromDataset/3 && results(i, j) == 1
+             correct = correct + 1;
+         elseif fisResults(j) >= maxValueFromDataset/3 && fisResults(j) < maxValueFromDataset*2/3 && results(i, j) == 2
+             correct = correct + 1;
+         elseif fisResults(j) >= maxValueFromDataset*2/3 && results(i, j) == 3
+             correct = correct + 1;
+         end
+    end
+    average = correct / data_size(2);
+    averages(i) = average;
+    flag = 0;
 end
+tmpSum = 0;
+for i=1:length(averages)
+    tmpSum = tmpSum + averages(i);
+end
+genFisResult = tmpSum / length(averages);
+[customFisResult genFisResult]
 
-outputs = evalfis(perfectFis, squeeze(data_matrix(10, :, :)));
-
-acc_matrix = get_acc_matrix(outputs, squeeze(data_matrix(1, :, :)), numberOfOutputs);
+% acc_matrix = get_acc_matrix(outputs, squeeze(data_matrix(1, :, :)), numberOfOutputs);
 
 % Funkcja do losowania liczby z przekazanego zakresu
 % Losowany zakres to [begin - 10% * range, end + 10%*range]
@@ -124,20 +160,13 @@ function fis = prepareFisWithPSO(pop, data_matrix, dataSet, results, basicFis)
                 v(:, i) = w * (v(:, i) + U1 * (pbest - pop(:, i)) + U2 * (gbest - pop(:, i)));
                 pop(:, i) = pop(:, i) + v(:, i);            
         end
-        
         fis = gbest;
-        
-        % experiment_result_values_sum = experiment_result_values_sum + estimated_best_value;
-        % experiment_vectors_sum = experiment_vectors_sum + gbest;
     end
-
-    % average_experiment_value = experiment_result_values_sum / EXPERIMENT_ATTEMPTS;
-    % average_experiment_solution = experiment_vectors_sum / EXPERIMENT_ATTEMPTS;
 end
 
 function factor = calc_constriction_factor(c1, c2)
     fi = c1 + c2;
-    factor = 1. / (2 + (fi * (fi - 4)) ^ 0.5); % tutaj jeszcze sprawdze w labach
+    factor = 2. / (2 + (fi * (fi - 4)) ^ 0.5); % tutaj jeszcze sprawdze w labach
     % jak dokladnie sie liczy ten wspolczynnik z reguly
 end
 
@@ -152,7 +181,7 @@ function customFis = parseFis(vect, data_matrix, customFis)
     [in,out] = getTunableSettings(customFis);
     numberOfMembershipFunctions = length(in(1).MembershipFunctions);
     tmpSize = size(data_matrix);
-    numberOfParameters = numberOfMembershipFunctions * tmpSize(2) * length(out(1).MembershipFunctions);
+    numberOfParameters = length(in(1).MembershipFunction(1).Parameters.Free) * numberOfMembershipFunctions * tmpSize(2);
     numOfParams = length(customFis.Input(1).MembershipFunctions(1).Parameters);
     singlePop = zeros(numberOfParameters/numOfParams, numOfParams);
     counter = 1;
@@ -174,6 +203,38 @@ function customFis = parseFis(vect, data_matrix, customFis)
 end
 
 function customFis = prepareFisRules(data_matrix, customFis)
+    [in,out] = getTunableSettings(customFis);
+    numberOfMembershipFunctions = length(in(1).MembershipFunctions);
+    %Przygotowanie zakresu dla każdej funkcji przynależności
+    maxValueFromDataset = max(max(data_matrix));
+    minValueFromDataset = min(min(data_matrix));
+    minValue = minValueFromDataset - 0.1 * (maxValueFromDataset-minValueFromDataset);
+    maxValue = maxValueFromDataset + 0.1 * (maxValueFromDataset-minValueFromDataset);
+    for i=1:length(in)
+        customFis.Inputs(i).Range = [minValue maxValue];
+    end
+    for i=1:length(out)
+        customFis.Outputs(i).Range = [minValue maxValue];
+    end
+    % Jest jedno wyjście i trzy klasy więc można to zrobić ręcznie
+    customFis.Outputs(1).MembershipFunctions(1).Parameters = [minValue (minValue+1/3*(maxValue-minValue) + minValue)/2 minValue+1/3*(maxValue-minValue)];
+    customFis.Outputs(1).MembershipFunctions(2).Parameters = [minValue+1/3*(maxValue-minValue) (maxValue-1/3*(maxValue-minValue) + minValue+1/3*(maxValue-minValue))/2 maxValue-1/3*(maxValue-minValue)];
+    customFis.Outputs(1).MembershipFunctions(3).Parameters = [maxValue-1/3*(maxValue-minValue) (maxValue-1/3*(maxValue-minValue) + maxValue) / 2 maxValue];
+    % Przygotowanie reguł
+    numberOfRules = length(customFis.Outputs(1).MembershipFunctions);
+    tmpRule = zeros(1, length(in)+length(out)+2);
+    for i=1:numberOfRules
+        for j=1:length(in)+length(out)
+           tmpRule(1, j) = i; 
+        end
+        tmpRule(1, length(in)+length(out)+1) = 1;
+        tmpRule(1, length(in)+length(out)+2) = 1;
+        customFis = addRule(customFis, tmpRule);
+    end
+    %showrule(customFis, 'Format', 'indexed')
+end
+
+function customFis = firstAttemptPrepareFisRules(data_matrix, customFis)
     [in,out] = getTunableSettings(customFis);
     numberOfMembershipFunctions = length(in(1).MembershipFunctions);
     %Przygotowanie zakresu dla każdej funkcji przynależności
