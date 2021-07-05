@@ -33,6 +33,17 @@ populationSize = 15;
 numberOfFolds = 10;
 
 [data_matrix, results, dataSet, numberOfAttributes, maxValueFromDataset, minValueFromDataset, numberOfClasses] = prepare_folds(data_store, numberOfFolds);
+
+% maxForEachAttribute = zeros(numberOfAttributes);
+%     minForEachAttribute = zeros(numberOfAttributes);
+%     for i=1:numberOfAttributes
+%        minForEachAttribute(i) = min(min(min(data_matrix(:, :, i))));
+%        maxForEachAttribute(i) = max(max(max(data_matrix(:, :, i))));
+%     end
+%     minForEachAttribute
+%     maxForEachAttribute
+
+
 customFis = mamfis('Name', 'test', 'NumInputs', numberOfAttributes, 'NumOutputs', 1, 'NumInputMFs', numberOfClasses, 'NumOutputMFs', numberOfClasses);
 customFis = prepareFisRules(dataSet, customFis);
 pop = generatePopulation(customFis, numberOfAttributes, numberOfClasses, populationSize, minValueFromDataset, maxValueFromDataset);
@@ -45,9 +56,14 @@ genFisResult = genfisTest(data_matrix, results);
 customFisResult 
 genFisResult
 customFis = parseFis(perfectParams, dataSet, customFis);
-[acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, results, numberOfClasses);
+[acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, results, numberOfClasses, numberOfAttributes);
 acc_matrix
 sensitivity
+tmp = 0;
+for i=1:length(sensitivity)
+   tmp = tmp + sensitivity(i); 
+end
+percent = tmp / length(sensitivity)
 
 % Funkcja do losowania liczby z przekazanego zakresu
 % Losowany zakres to [begin - 10% * range, end + 10%*range]
@@ -94,7 +110,7 @@ function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results
     c2 = 2; % stala akceleracji
 
     it = 0; % licznik iteracji
-    it_max = 10; % maksymalny nr iteracji
+    it_max = 25; % maksymalny nr iteracji
     gbestList = zeros(1, it_max);
     % wektor predkosci
     v = zeros(vector_size, pop_size); % wektor o dlugosci wiersza danych (60 dla irysow)
@@ -102,7 +118,7 @@ function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results
     % losowo generujemy predkosci
     for i = 1 : vector_size
         for j = 1: pop_size
-            v(i, j) = rand(); % zakres losowania [0-1]
+            v(i, j) = randInRange(-1, 1); % zakres losowania [0-1]
         end
     end
 
@@ -118,7 +134,7 @@ function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results
         for i = 1 : pop_size
                 % jak czasteczka w i-tej iteracji jest lepsza to
                 % zamieniamy
-                if i == 1 || get_func_val(pop(:, i), data_matrix, dataSet, results, basicFis) > get_func_val(pbest, data_matrix, dataSet, results, basicFis)
+                if i == 1 || get_func_val(pop(:, i), data_matrix, dataSet, results, basicFis) < get_func_val(pbest, data_matrix, dataSet, results, basicFis)
                     pbest = pop(:, i);
                 end
         end
@@ -126,7 +142,7 @@ function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results
         %szukamy rozwiazania globalnie najlepszego
         if it == 1
             gbest = pbest;
-        elseif get_func_val(pbest, data_matrix, dataSet, results, basicFis) > get_func_val(gbest, data_matrix, dataSet, results, basicFis)
+        elseif get_func_val(pbest, data_matrix, dataSet, results, basicFis) < get_func_val(gbest, data_matrix, dataSet, results, basicFis)
             gbest = pbest;
         end
         
@@ -202,9 +218,12 @@ function customFis = prepareFisRules(data_matrix, customFis)
         customFis.Outputs(i).Range = [minValue maxValue];
     end
     % Jest jedno wyjście i trzy klasy więc można to zrobić ręcznie
-    customFis.Outputs(1).MembershipFunctions(1).Parameters = [minValue (minValue+1/3*(maxValue-minValue) + minValue)/2 minValue+1/3*(maxValue-minValue)];
-    customFis.Outputs(1).MembershipFunctions(2).Parameters = [minValue+1/3*(maxValue-minValue) (maxValue-1/3*(maxValue-minValue) + minValue+1/3*(maxValue-minValue))/2 maxValue-1/3*(maxValue-minValue)];
-    customFis.Outputs(1).MembershipFunctions(3).Parameters = [maxValue-1/3*(maxValue-minValue) (maxValue-1/3*(maxValue-minValue) + maxValue) / 2 maxValue];
+    %customFis.Outputs(1).MembershipFunctions(1).Parameters = [minValue (minValue+1/3*(maxValue-minValue) + minValue)/2 minValue+1/3*(maxValue-minValue)];
+    %customFis.Outputs(1).MembershipFunctions(2).Parameters = [minValue+1/3*(maxValue-minValue) (maxValue-1/3*(maxValue-minValue) + minValue+1/3*(maxValue-minValue))/2 maxValue-1/3*(maxValue-minValue)];
+    %customFis.Outputs(1).MembershipFunctions(3).Parameters = [maxValue-1/3*(maxValue-minValue) (maxValue-1/3*(maxValue-minValue) + maxValue) / 2 maxValue];
+    customFis.Outputs(1).MembershipFunctions(1).Parameters = [-1 1 1.5];
+    customFis.Outputs(1).MembershipFunctions(2).Parameters = [1.51 2 2.5];
+    customFis.Outputs(1).MembershipFunctions(3).Parameters = [2.51 3 4];
     % Przygotowanie reguł
     numberOfRules = numberOfMembershipFunctions ^ length(in);
     tmp = zeros(length(out(1).MembershipFunctions));
@@ -275,35 +294,19 @@ end
 % results - prawidłowe wyniki
 function value = cross_validation(data_matrix, customFis, results)
     data_size = size(data_matrix);
-    averages = zeros(data_size(1));
-    maxValue = max(max(max(data_matrix)));
+    value = 0;
     for i=1:data_size(1)
        testData = data_matrix(i, :, :);
        test_size = size(testData);
        testData = reshape(testData, test_size(2), test_size(3));
        % testowanie przygotowanego zbioru
        out = evalfis(customFis, testData);
-       %badanie dokładności i zapisanie w tablicy do policzenia wartości średniej
-       % badanie odbywa się przez porównanie wartości wyjściowej z
-       % wartością oczekiwaną (nie rozróżniam na tym etapie klas)
-       correct = 0;
-       for j=1:data_size(2)
-            if out(j) < maxValue/3 && results(i, j) == 1
-                correct = correct + 1;
-            elseif out(j) >= maxValue/3 && out(j) < maxValue*2/3 && results(i, j) == 2
-                correct = correct + 1;
-            elseif out(j) >= maxValue*2/3 && results(i, j) == 3
-                correct = correct + 1;
-            end
+       % badanie dokładności i zapisanie w tablicy do policzenia wartości średniej
+       % wyliczenie błędu średniokwadratowego
+       for j=1:length(out)
+          value = value + (out(j) - results(i, j))^2; 
        end
-       average = correct / data_size(2);
-       averages(i) = average;
     end
-    tmpSum = 0;
-    for i=1:length(averages)
-        tmpSum = tmpSum + averages(i);
-    end
-    value = tmpSum / length(averages);
 end
 
 % Funkcja tworząca genfis do porównania z układem logiki rozmytej
@@ -315,8 +318,6 @@ end
 function value = genfisTest(data_matrix, results)
     flag = 0;
     data_size = size(results);
-    averages = zeros(1, data_size(1));
-    maxValue = max(max(max(data_matrix)));
 
     % genfis przy CV-10
     for i=1:10
@@ -332,25 +333,12 @@ function value = genfisTest(data_matrix, results)
             end
         end
         fisResults = evalfis(perfectFis, squeeze(data_matrix(i, :, :)));
-        correct = 0;
+        value = 0;
         for j=1:data_size(2)
-            if fisResults(j) < maxValue/3 && results(i, j) == 1
-                correct = correct + 1;
-            elseif fisResults(j) >= maxValue/3 && fisResults(j) < maxValue*2/3 && results(i, j) == 2
-                correct = correct + 1;
-            elseif fisResults(j) >= maxValue*2/3 && results(i, j) == 3
-                correct = correct + 1;
-            end
+            value = value + (fisResults(j) - results(i, j))^2;
         end
-        average = correct / data_size(2);
-        averages(i) = average;
         flag = 0;
     end
-    tmpSum = 0;
-    for i=1:length(averages)
-        tmpSum = tmpSum + averages(i);
-    end
-    value = tmpSum / length(averages);
 end
 
 % Funkcja tworząca macierz pomyłek i wyznaczająca czułość klasyfikatora
@@ -358,7 +346,7 @@ end
 % data_matrix - macierz z danymi podzielona na części
 % result - macierz z prawidłowymi wynikami
 % NUM_OF_CLASSES - liczba klas wynikowych
-function [acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, result, NUM_OF_CLASSES)
+function [acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, result, NUM_OF_CLASSES, numberOfAttributes)
     acc_matrix = zeros(NUM_OF_CLASSES, NUM_OF_CLASSES);
     data_size = size(data_matrix);
     maxValue = max(max(max(data_matrix)));
@@ -368,12 +356,18 @@ function [acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, resu
        testData = reshape(testData, test_size(2), test_size(3));
        % testowanie przygotowanego zbioru
        out = evalfis(customFis, testData);
+       out
+       median = findMedian(out);
+       localMin = min(out);
+       localMax = max(out);
+       delta = localMax - localMin;
+       localAverage = (localMax + localMin) / 2;
        for j=1:data_size(2)
-            if out(j) < maxValue/3
+            if out(j) < median - delta * 0.25
                 out(j) = 1;
-            elseif out(j) >= maxValue/3 && out(j) < maxValue*2/3
+            elseif out(j) >= median - delta * 0.25 && out(j) < median + delta * 0.25
                 out(j) = 2;
-            elseif out(j) >= maxValue*2/3
+            elseif out(j) >= median + delta * 0.25
                 out(j) = 3;
             end
             acc_matrix(result(i, j), out(j)) = acc_matrix(result(i, j), out(j)) + 1;
@@ -389,5 +383,15 @@ function [acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, resu
         end
         sensitivity(1, i) = currCorrect / tmpSum;
         tmpSum = 0;
+    end
+end
+
+function value = findMedian(vec)
+    vec = sort(vec);
+    len = length(vec);
+    if mod(len, 2) == 0
+       value = (vec(len/2) + vec((len+1)/2)) / 2; 
+    else
+        value = vec((len+1)/2);
     end
 end
