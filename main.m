@@ -21,8 +21,12 @@ switch choice
         data_store = load('Data/seeds_dataset.txt');
     case 4
         data_store = load('Data/haberman.data');
+         habermanSize = size(data_store);
+        data_store = sortrows(data_store, habermanSize(2));
     case 5
         data_store = load('Data/tae.data');
+        taeSize = size(data_store);
+        data_store = sortrows(data_store, taeSize(2));
     otherwise
         printf("Nie wybrano poprawnie zbioru, wiec domyslnie zostanie wybrany zbior irysow. \n")
 end
@@ -56,14 +60,10 @@ genFisResult = genfisTest(data_matrix, results);
 customFisResult 
 genFisResult
 customFis = parseFis(perfectParams, dataSet, customFis);
-[acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, results, numberOfClasses, numberOfAttributes);
+[acc_matrix, sensitivity, percent] = get_acc_matrix_versatile(customFis, data_matrix, results, numberOfClasses);
 acc_matrix
 sensitivity
-tmp = 0;
-for i=1:length(sensitivity)
-   tmp = tmp + sensitivity(i); 
-end
-percent = tmp / length(sensitivity)
+percent
 
 % Funkcja do losowania liczby z przekazanego zakresu
 % Losowany zakres to [begin - 10% * range, end + 10%*range]
@@ -89,7 +89,7 @@ end
 function pop = generatePopulation(customFis, numberOfAttributes, numberOfClasses, populationSize, minValueFromDataset, maxValueFromDataset)
     [in, out] = getTunableSettings(customFis);
     % Wyznaczenie ilości osobników w populacji
-    numberOfParameters = numberOfAttributes*numberOfClasses*length(in(1).MembershipFunctions(1).Parameters.Free);
+    numberOfParameters = numberOfAttributes*3*length(in(1).MembershipFunctions(1).Parameters.Free);
     % Zainicjowanie populacji zerami
     pop = zeros(numberOfParameters, populationSize);
     % Przypisanie wylosowanych liczb do populacji
@@ -207,24 +207,34 @@ function customFis = prepareFisRules(data_matrix, customFis)
     [in,out] = getTunableSettings(customFis);
     numberOfMembershipFunctions = length(in(1).MembershipFunctions);
     %Przygotowanie zakresu dla każdej funkcji przynależności
-    maxValueFromDataset = max(max(data_matrix));
-    minValueFromDataset = min(min(data_matrix));
+    maxValueFromDataset = max(data_matrix);
+    minValueFromDataset = min(data_matrix);
+    
     minValue = minValueFromDataset - 0.1 * (maxValueFromDataset-minValueFromDataset);
     maxValue = maxValueFromDataset + 0.1 * (maxValueFromDataset-minValueFromDataset);
-    for i=1:length(in)
-        customFis.Inputs(i).Range = [minValue maxValue];
+    
+    for i = 1 : length(in)
+        customFis.Inputs(i).Range = [minValue(i) maxValue(i)];
     end
-    for i=1:length(out)
-        customFis.Outputs(i).Range = [minValue maxValue];
+    
+%     minOut = -0.5;
+%     maxOut = 5.5;
+    
+    for i = 1 : length(out)
+        customFis.Outputs(i).Range = [min(minValue) max(maxValue)];
     end
-    % Jest jedno wyjście i trzy klasy więc można to zrobić ręcznie
-    %customFis.Outputs(1).MembershipFunctions(1).Parameters = [minValue (minValue+1/3*(maxValue-minValue) + minValue)/2 minValue+1/3*(maxValue-minValue)];
-    %customFis.Outputs(1).MembershipFunctions(2).Parameters = [minValue+1/3*(maxValue-minValue) (maxValue-1/3*(maxValue-minValue) + minValue+1/3*(maxValue-minValue))/2 maxValue-1/3*(maxValue-minValue)];
-    %customFis.Outputs(1).MembershipFunctions(3).Parameters = [maxValue-1/3*(maxValue-minValue) (maxValue-1/3*(maxValue-minValue) + maxValue) / 2 maxValue];
+        
+    % finish();
+    
+    %diff = maxOut - minOut;
+    
+%     customFis.Outputs(1).MembershipFunctions(1).Parameters = [minOut (minOut + 1/3 * diff) / 2 minOut + 1/3 * diff + 0.1];
+%     customFis.Outputs(1).MembershipFunctions(2).Parameters = [minOut + 1/3 * diff (minOut + 1/2.4 * diff) minOut + 1/2 * diff + 0.1];
+%     customFis.Outputs(1).MembershipFunctions(3).Parameters = [minOut + 1/2 * diff minOut + 3 * diff 8 * maxOut];
     customFis.Outputs(1).MembershipFunctions(1).Parameters = [-1 1 1.5];
     customFis.Outputs(1).MembershipFunctions(2).Parameters = [1.51 2 2.5];
     customFis.Outputs(1).MembershipFunctions(3).Parameters = [2.51 3 4];
-    % Przygotowanie reguł
+% Przygotowanie reguł
     numberOfRules = numberOfMembershipFunctions ^ length(in);
     tmp = zeros(length(out(1).MembershipFunctions));
     tmpHolder = 0;
@@ -349,7 +359,6 @@ end
 function [acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, result, NUM_OF_CLASSES, numberOfAttributes)
     acc_matrix = zeros(NUM_OF_CLASSES, NUM_OF_CLASSES);
     data_size = size(data_matrix);
-    maxValue = max(max(max(data_matrix)));
     for i=1:data_size(1)
        testData = data_matrix(i, :, :);
        test_size = size(testData);
@@ -386,12 +395,161 @@ function [acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, resu
     end
 end
 
+function [acc_matrix, sensitivity, percent] = get_acc_matrix_versatile(customFis, data_matrix, result, NUM_OF_CLASSES)
+    acc_matrix = zeros(NUM_OF_CLASSES, NUM_OF_CLASSES);
+    data_size = size(data_matrix);
+    [globalMin, globalMax, globalMedian, globalAverage, delta, averages, medians] = getOutputParams(customFis, data_matrix, result, NUM_OF_CLASSES);
+    averages
+    medians
+    interval_endings = zeros(1, NUM_OF_CLASSES + 1);
+    factor = 1. / (2*NUM_OF_CLASSES);
+    interval_endings(1) = globalMin;
+    interval_endings(NUM_OF_CLASSES + 1) = globalMax; 
+    for i=1:data_size(1)
+       testData = data_matrix(i, :, :);
+       test_size = size(testData);
+       testData = reshape(testData, test_size(2), test_size(3));
+       % testowanie przygotowanego zbioru
+       out = evalfis(customFis, testData);
+       %out
+       
+       if NUM_OF_CLASSES > 2
+            for k = 2 : floor((NUM_OF_CLASSES + 1) / 2)
+                current_dist = floor((NUM_OF_CLASSES + 1) / 2) + 1 - k;
+                interval_endings(k) = globalMedian - (medians(k)-medians(k-1))/2;%delta * factor * current_dist;
+            end
+      
+            if mod(NUM_OF_CLASSES + 1, 2) ~= 0
+                interval_endings(floor((NUM_OF_CLASSES + 1) / 2)) = globalMedian;
+            end
+       
+            for k = floor((NUM_OF_CLASSES + 1) / 2) + 1 : NUM_OF_CLASSES
+                current_dist =  k - floor((NUM_OF_CLASSES + 1) / 2);
+                interval_endings(k) = globalMedian + (medians(k)-medians(k-1))/2; %delta * factor * current_dist;
+            end
+       
+       else
+           interval_endings(1) = globalMin;
+           interval_endings(2) = globalMedian + (medians(2) - medians(1)) / 2;
+           interval_endings(3) = globalMax;
+       end
+          
+       [interval_endings]
+       
+       for j=1:data_size(2)
+            current_result = out(j);
+            
+            for k = 2 : NUM_OF_CLASSES + 1
+                if current_result >= interval_endings(k - 1) && current_result <= interval_endings(k)
+                    out(j) = k - 1;
+                end    
+            end
+            
+            acc_matrix(result(i, j), out(j)) = acc_matrix(result(i, j), out(j)) + 1;
+       end
+    end
+    
+    sensitivity = zeros(1, NUM_OF_CLASSES);
+    tmpSum = 0;
+    totalCorrect = 0;
+    for i=1:NUM_OF_CLASSES
+        currCorrect = acc_matrix(i, i);
+        for j=1:NUM_OF_CLASSES
+            tmpSum = tmpSum + acc_matrix(i, j);
+        end
+        sensitivity(1, i) = currCorrect / tmpSum;
+        totalCorrect = totalCorrect + currCorrect;
+        tmpSum = 0;
+    end
+    percent = totalCorrect / sum(sum(acc_matrix));
+end
+
 function value = findMedian(vec)
     vec = sort(vec);
     len = length(vec);
     if mod(len, 2) == 0
-       value = (vec(len/2) + vec((len+1)/2)) / 2; 
+       value = (vec(len/2) + vec((len)/2 + 1)) / 2; 
     else
-        value = vec((len+1)/2);
+        value = vec((len + 1)/2);
     end
+end
+
+function [globalMin, globalMax, globalMedian, globalAverage, delta, averages, medians] = getOutputParams(customFis, data_matrix, results, numOfClasses)
+    data_size = size(data_matrix);
+    allOuts = zeros(1, data_size(2)*data_size(3));
+    averages = zeros(1, numOfClasses);
+    medians = zeros(1, numOfClasses);
+    classSizes = zeros(1, numOfClasses);
+    counter = 1;
+    secCounter = 1;
+    tmp = 1;
+    globalMin = 10000;
+    globalMax = -10000;
+    for i=1:data_size(1)
+       testData = data_matrix(i, :, :);
+       test_size = size(testData);
+       testData = reshape(testData, test_size(2), test_size(3));
+       out = evalfis(customFis, testData);
+       localMin = min(out);
+       localMax = max(out);
+       if localMin < globalMin
+           globalMin = localMin;
+       end
+       if localMax > globalMax
+           globalMax = localMax;
+       end
+       for j=1:length(out)
+           allOuts(1, counter) = out(j);
+           counter = counter + 1;
+           tmpX = tmp;
+           tmpY = mod(counter-1, data_size(2));
+           if tmpY == 0 
+               tmpY = data_size(2); 
+           end
+           for k=1:numOfClasses
+              if results(tmpX,tmpY) == k
+                 averages(k) = averages(k) + out(j);
+                 classSizes(k) = classSizes(k) + 1;
+              end
+           end
+       end
+       tmp = tmp + 1;
+    end
+    for k=1:numOfClasses
+       averages(k) = averages(k) / classSizes(k); 
+    end
+    sizeHolder = counter - 1;
+    counter = 1;
+    tmp = 1;
+    for k=1:numOfClasses
+        test = zeros(1, classSizes(k));
+        for i=1:data_size(1)
+            testData = data_matrix(i, :, :);
+            test_size = size(testData);
+            testData = reshape(testData, test_size(2), test_size(3));
+            out = evalfis(customFis, testData);
+            for j=1:length(out)
+                counter = counter + 1;
+                tmpX = tmp;
+                tmpY = mod(counter-1, data_size(2));
+                if tmpY == 0 
+                    tmpY = data_size(2); 
+                end
+                if results(tmpX,tmpY) == k
+                    test(secCounter) = out(j);
+                    secCounter = secCounter + 1;
+                end
+            end
+            tmp = tmp + 1;
+        end
+        test = reshape(test, [classSizes(k), 1]);
+        medians(k) = findMedian(test);
+        tmp = 1;
+        counter = 1;
+        secCounter = 1;
+    end
+    allOuts = reshape(allOuts, [sizeHolder,1]);
+    globalMedian = findMedian(allOuts);
+    delta = globalMax - globalMin;
+    globalAverage = (globalMin + globalMax) / 2; 
 end
