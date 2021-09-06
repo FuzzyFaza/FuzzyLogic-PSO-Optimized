@@ -4,31 +4,20 @@ iris_names = ["Setosa", "Versicolor", "Viriginica"];
 % Nazwy w zbiorze iris zostaly zastepione przez liczbowe etykiety (1, 2, 3)
 % aby latwiej bylo wczytac zbior danych
 
-choice = input("Proszę wybrać zbiór danych, na którym będziemy operować:\n 1. Irysy 2. Wina 3. Zbiór ziaren - seeds 4. Haberman 5. Teaching Assistants\n");
+choice = input("Proszę wybrać zbiór danych, na którym będziemy operować:\n 1. Irysy 2. Zbiór ziaren - seeds 3. Haberman\n");
  
 data_store = [];
-
 switch choice
     case 1
         data_store = load('Data/iris.data');
     case 2
-        % Przesunięcie numerów klas w zbiorze win na ostatnią pozycję
-        wine_data = load('Data/wine.data');
-        wineSize = size(wine_data);
-        wine_data = circshift(wine_data, wineSize(2)-1, 2);
-        data_store = wine_data;
-    case 3
         data_store = load('Data/seeds_dataset.txt');
-    case 4
+    case 3
         data_store = load('Data/haberman.data');
-         habermanSize = size(data_store);
+        habermanSize = size(data_store);
         data_store = sortrows(data_store, habermanSize(2));
-    case 5
-        data_store = load('Data/tae.data');
-        taeSize = size(data_store);
-        data_store = sortrows(data_store, taeSize(2));
     otherwise
-        printf("Nie wybrano poprawnie zbioru, wiec domyslnie zostanie wybrany zbior irysow. \n")
+        printf("Nie wybrano poprawnie zbioru\n")
 end
 
 % Ustawienie rozmiaru populacji
@@ -37,25 +26,13 @@ populationSize = 15;
 numberOfFolds = 10;
 
 [data_matrix, results, dataSet, numberOfAttributes, maxValueFromDataset, minValueFromDataset, numberOfClasses] = prepare_folds(data_store, numberOfFolds);
-
-% maxForEachAttribute = zeros(numberOfAttributes);
-%     minForEachAttribute = zeros(numberOfAttributes);
-%     for i=1:numberOfAttributes
-%        minForEachAttribute(i) = min(min(min(data_matrix(:, :, i))));
-%        maxForEachAttribute(i) = max(max(max(data_matrix(:, :, i))));
-%     end
-%     minForEachAttribute
-%     maxForEachAttribute
-
-
 customFis = mamfis('Name', 'test', 'NumInputs', numberOfAttributes, 'NumOutputs', 1, 'NumInputMFs', numberOfClasses, 'NumOutputMFs', numberOfClasses);
 customFis = prepareFisRules(dataSet, customFis);
 pop = generatePopulation(customFis, numberOfAttributes, numberOfClasses, populationSize, minValueFromDataset, maxValueFromDataset);
 [perfectParams, bestDuringIterations] = prepareFisWithPSO(pop, data_matrix, dataSet, results, customFis);
-drawTrainingProcess(bestDuringIterations);
+drawTrainingProcess(bestDuringIterations, 'mse(it)_v=[0,1]');
 customFis = parseFis(perfectParams, dataSet, customFis);
 customFisResult = get_func_val(perfectParams, data_matrix, dataSet, results, customFis);
-%plotfis(customFis)
 genFisResult = genfisTest(data_matrix, results);
 customFisResult 
 genFisResult
@@ -74,9 +51,15 @@ end
 
 %Funkcja do rysowania wykresu wartości globalnie najlepszego rozwiązania od
 %numeru iteracji
-function drawTrainingProcess(bests)
+function drawTrainingProcess(bests, file_name)
+    gcf = figure;
     bestSize = size(bests);
-    plot([1:bestSize(2)], bests);
+    plot([1:bestSize(2)], bests)
+    title("Calkowity globalny blad sredniokwadratowy w funkcji nr iteracji")
+    xlabel("Nr iteracji")
+    ylabel("MSE")
+    saveas(gcf, file_name)
+    close(gcf)
 end
 
 %Funkcja tworząca populacje
@@ -106,11 +89,11 @@ end
 function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results, basicFis)    
     [vector_size, pop_size] = size(pop); % vector_size to rozmiar pojedyńczego wektora populacji
     % pop_size to rozmiar całej populacji
-    c1 = 2; % stala akceleracji
-    c2 = 2; % stala akceleracji
+    c1 = 2.05; % stala akceleracji
+    c2 = 2.05; % stala akceleracji
 
     it = 0; % licznik iteracji
-    it_max = 25; % maksymalny nr iteracji
+    it_max = 100; % maksymalny nr iteracji
     gbestList = zeros(1, it_max);
     % wektor predkosci
     v = zeros(vector_size, pop_size); % wektor o dlugosci wiersza danych (60 dla irysow)
@@ -118,7 +101,7 @@ function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results
     % losowo generujemy predkosci
     for i = 1 : vector_size
         for j = 1: pop_size
-            v(i, j) = randInRange(-1, 1); % zakres losowania [0-1]
+            v(i, j) = randInRange(0, 1); % zakres losowania [0-1]
         end
     end
 
@@ -198,7 +181,6 @@ function customFis = parseFis(vect, data_matrix, customFis)
             counter = counter + 1;
         end
     end
-    %showrule(customFis, 'Format', 'indexed')
 end
 
 %Przygotowanie reguł układu logiki rozmytej
@@ -217,20 +199,9 @@ function customFis = prepareFisRules(data_matrix, customFis)
         customFis.Inputs(i).Range = [minValue(i) maxValue(i)];
     end
     
-%     minOut = -0.5;
-%     maxOut = 5.5;
-    
     for i = 1 : length(out)
         customFis.Outputs(i).Range = [min(minValue) max(maxValue)];
     end
-        
-    % finish();
-    
-    %diff = maxOut - minOut;
-    
-%     customFis.Outputs(1).MembershipFunctions(1).Parameters = [minOut (minOut + 1/3 * diff) / 2 minOut + 1/3 * diff + 0.1];
-%     customFis.Outputs(1).MembershipFunctions(2).Parameters = [minOut + 1/3 * diff (minOut + 1/2.4 * diff) minOut + 1/2 * diff + 0.1];
-%     customFis.Outputs(1).MembershipFunctions(3).Parameters = [minOut + 1/2 * diff minOut + 3 * diff 8 * maxOut];
     customFis.Outputs(1).MembershipFunctions(1).Parameters = [-1 1 1.5];
     customFis.Outputs(1).MembershipFunctions(2).Parameters = [1.51 2 2.5];
     customFis.Outputs(1).MembershipFunctions(3).Parameters = [2.51 3 4];
@@ -321,8 +292,6 @@ end
 
 % Funkcja tworząca genfis do porównania z układem logiki rozmytej
 % utworzonym ręcznie
-% Utworzony genfis ma zaledwie 16 reguł, więc praktycznie zawsze będzie
-% gorszy od fis'u utworzonego ręcznie
 % data_matrix - dane podzielone na części
 % results - prawidłowe wyniki
 function value = genfisTest(data_matrix, results)
@@ -356,51 +325,23 @@ end
 % data_matrix - macierz z danymi podzielona na części
 % result - macierz z prawidłowymi wynikami
 % NUM_OF_CLASSES - liczba klas wynikowych
-function [acc_matrix, sensitivity] = get_acc_matrix(customFis, data_matrix, result, NUM_OF_CLASSES, numberOfAttributes)
-    acc_matrix = zeros(NUM_OF_CLASSES, NUM_OF_CLASSES);
-    data_size = size(data_matrix);
-    for i=1:data_size(1)
-       testData = data_matrix(i, :, :);
-       test_size = size(testData);
-       testData = reshape(testData, test_size(2), test_size(3));
-       % testowanie przygotowanego zbioru
-       out = evalfis(customFis, testData);
-       out
-       median = findMedian(out);
-       localMin = min(out);
-       localMax = max(out);
-       delta = localMax - localMin;
-       localAverage = (localMax + localMin) / 2;
-       for j=1:data_size(2)
-            if out(j) < median - delta * 0.25
-                out(j) = 1;
-            elseif out(j) >= median - delta * 0.25 && out(j) < median + delta * 0.25
-                out(j) = 2;
-            elseif out(j) >= median + delta * 0.25
-                out(j) = 3;
-            end
-            acc_matrix(result(i, j), out(j)) = acc_matrix(result(i, j), out(j)) + 1;
-       end
-    end
-    
-    sensitivity = zeros(1, NUM_OF_CLASSES);
-    tmpSum = 0;
-    for i=1:NUM_OF_CLASSES
-        currCorrect = acc_matrix(i, i);
-        for j=1:NUM_OF_CLASSES
-            tmpSum = tmpSum + acc_matrix(i, j);
-        end
-        sensitivity(1, i) = currCorrect / tmpSum;
-        tmpSum = 0;
-    end
-end
-
 function [acc_matrix, sensitivity, percent] = get_acc_matrix_versatile(customFis, data_matrix, result, NUM_OF_CLASSES)
     acc_matrix = zeros(NUM_OF_CLASSES, NUM_OF_CLASSES);
     data_size = size(data_matrix);
     [globalMin, globalMax, globalMedian, globalAverage, delta, averages, medians] = getOutputParams(customFis, data_matrix, result, NUM_OF_CLASSES);
     averages
     medians
+    valueSet = sort(medians);
+    newIndexes = zeros(1, length(medians));
+    for i=1:length(valueSet)
+            for j=1:length(valueSet) 
+                if medians(i) == valueSet(j)
+                    newIndexes(1, i) = j;
+                end
+            end
+    end
+    medians = sort(medians);
+    averages = sort(averages);
     interval_endings = zeros(1, NUM_OF_CLASSES + 1);
     factor = 1. / (2*NUM_OF_CLASSES);
     interval_endings(1) = globalMin;
@@ -411,12 +352,10 @@ function [acc_matrix, sensitivity, percent] = get_acc_matrix_versatile(customFis
        testData = reshape(testData, test_size(2), test_size(3));
        % testowanie przygotowanego zbioru
        out = evalfis(customFis, testData);
-       %out
        
        if NUM_OF_CLASSES > 2
             for k = 2 : floor((NUM_OF_CLASSES + 1) / 2)
-                current_dist = floor((NUM_OF_CLASSES + 1) / 2) + 1 - k;
-                interval_endings(k) = globalMedian - (medians(k)-medians(k-1))/2;%delta * factor * current_dist;
+                interval_endings(k) = globalMedian - (medians(k)-medians(k-1))/2;
             end
       
             if mod(NUM_OF_CLASSES + 1, 2) ~= 0
@@ -424,8 +363,7 @@ function [acc_matrix, sensitivity, percent] = get_acc_matrix_versatile(customFis
             end
        
             for k = floor((NUM_OF_CLASSES + 1) / 2) + 1 : NUM_OF_CLASSES
-                current_dist =  k - floor((NUM_OF_CLASSES + 1) / 2);
-                interval_endings(k) = globalMedian + (medians(k)-medians(k-1))/2; %delta * factor * current_dist;
+                interval_endings(k) = globalMedian + (medians(k)-medians(k-1))/2; 
             end
        
        else
@@ -433,15 +371,13 @@ function [acc_matrix, sensitivity, percent] = get_acc_matrix_versatile(customFis
            interval_endings(2) = globalMedian + (medians(2) - medians(1)) / 2;
            interval_endings(3) = globalMax;
        end
-          
-       [interval_endings]
        
        for j=1:data_size(2)
             current_result = out(j);
             
             for k = 2 : NUM_OF_CLASSES + 1
                 if current_result >= interval_endings(k - 1) && current_result <= interval_endings(k)
-                    out(j) = k - 1;
+                    out(j) = newIndexes(k-1);
                 end    
             end
             
@@ -462,6 +398,8 @@ function [acc_matrix, sensitivity, percent] = get_acc_matrix_versatile(customFis
         tmpSum = 0;
     end
     percent = totalCorrect / sum(sum(acc_matrix));
+    [interval_endings]
+    newIndexes
 end
 
 function value = findMedian(vec)
