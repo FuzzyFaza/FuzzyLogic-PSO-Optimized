@@ -113,6 +113,7 @@ function [fis, gbestList] = prepareFisWithPSO(pop, data_matrix, dataSet, results
     
     while it <= it_max
         it = it + 1;
+        fprintf('it: %d\n', it);
         % wyznaczamy przystosowanie kazdej czastki - wartosc funkcji w punkcie
         % i czy jest ona mniejsza od poprzedniej najlepszej dla danej czastki
         for i = 1 : pop_size
