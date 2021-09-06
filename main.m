@@ -17,7 +17,8 @@ switch choice
         habermanSize = size(data_store);
         data_store = sortrows(data_store, habermanSize(2));
     otherwise
-        printf("Nie wybrano poprawnie zbioru\n")
+        fprintf("Nie wybrano poprawnie zbioru\n")
+        return
 end
 
 % Ustawienie rozmiaru populacji
@@ -412,6 +413,7 @@ function value = findMedian(vec)
     end
 end
 
+%Funkcja zwracająca informacje na temat wyników otrzymanych z customFis.
 function [globalMin, globalMax, globalMedian, globalAverage, delta, averages, medians] = getOutputParams(customFis, data_matrix, results, numOfClasses)
     data_size = size(data_matrix);
     allOuts = zeros(1, data_size(2)*data_size(3));
